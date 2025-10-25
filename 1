@@ -1,0 +1,96 @@
+package com.adityachandel.booklore.controller;
+
+import com.adityachandel.booklore.config.security.service.AuthenticationService;
+import com.adityachandel.booklore.service.BookService;
+import com.adityachandel.booklore.service.bookdrop.BookDropService;
+import com.adityachandel.booklore.service.metadata.BookMetadataService;
+import com.adityachandel.booklore.service.reader.CbxReaderService;
+import com.adityachandel.booklore.service.reader.PdfReaderService;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.AllArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
+@AllArgsConstructor
+@RestController
+@RequestMapping("/api/v1/media")
+public class BookMediaController {
+
+    private final BookService bookService;
+    private final PdfReaderService pdfReaderService;
+    private final CbxReaderService cbxReaderService;
+    private final BookDropService bookDropService;
+
+    @GetMapping("/book/{bookId}/thumbnail")
+    public ResponseEntity<Resource> getBookThumbnail(@PathVariable long bookId) {
+        return ResponseEntity.ok(bookService.getBookThumbnail(bookId));
+    }
+
+    @GetMapping("/book/{bookId}/cover")
+    public ResponseEntity<Resource> getBookCover(@PathVariable long bookId) {
+        return ResponseEntity.ok(bookService.getBookCover(bookId));
+    }
+
+    @GetMapping("/book/{bookId}/pdf/pages/{pageNumber}")
+    public void getPdfPage(@PathVariable Long bookId, @PathVariable int pageNumber, HttpServletResponse response) throws IOException {
+        response.setContentType(MediaType.IMAGE_JPEG_VALUE);
+        pdfReaderService.streamPageImage(bookId, pageNumber, response.getOutputStream());
+    }
+
+    @GetMapping("/book/{bookId}/cbx/pages/{pageNumber}")
+    public void getCbxPage(@PathVariable Long bookId, @PathVariable int pageNumber, HttpServletResponse response) throws IOException {
+        response.setContentType(MediaType.IMAGE_JPEG_VALUE);
+        cbxReaderService.streamPageImage(bookId, pageNumber, response.getOutputStream());
+    }
+
+    @GetMapping("/bookdrop/{bookdropId}/cover")
+    public ResponseEntity<Resource> getBookdropCover(@PathVariable long bookdropId) {
+        Resource file = bookDropService.getBookdropCover(bookdropId);
+        String contentDisposition = ContentDisposition.builder("inline")
+                .filename("cover.jpg", StandardCharsets.UTF_8)
+                .build()
+                .toString();
+        return (file != null)
+                ? ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                .contentType(MediaType.IMAGE_JPEG)
+                .body(file)
+                : ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/background")
+    public ResponseEntity<Resource> getBackgroundImage() {
+        try {
+            Resource file = bookService.getBackgroundImage();
+            if (file == null || !file.exists()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            String filename = file.getFilename();
+            MediaType mediaType = filename != null && filename.endsWith(".png")
+                    ? MediaType.IMAGE_PNG
+                    : MediaType.IMAGE_JPEG;
+
+            String contentDisposition = ContentDisposition.builder("inline")
+                    .filename(filename, StandardCharsets.UTF_8)
+                    .build()
+                    .toString();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
+                    .contentType(mediaType)
+                    .body(file);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+    }
